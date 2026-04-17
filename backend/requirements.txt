@@ -1,0 +1,7 @@
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+psutil==7.0.0
+python-multipart==0.0.20
+prometheus-fastapi-instrumentator==7.1.0
+prometheus-client==0.22.1
+httpx==0.28.1

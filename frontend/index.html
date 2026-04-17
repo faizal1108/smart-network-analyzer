@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Network Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  </head>
+  <body class="min-h-screen bg-slate-100 text-slate-900">
+    <nav class="border-b border-slate-200 bg-white">
+      <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
+        <h1 class="text-xl font-semibold text-blue-700">Smart Network Analyzer</h1>
+        <span class="text-sm text-slate-500">Real-Time Network Insights</span>
+      </div>
+    </nav>
+
+    <main class="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-2">
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-blue-700">Speed Test</h2>
+          <button
+            id="startSpeedTestBtn"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+          >
+            Start Test
+          </button>
+        </div>
+        <div id="speedLoader" class="mb-4 hidden items-center gap-2 text-sm text-blue-700">
+          <div class="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"></div>
+          <span id="speedLoaderText">Running speed test...</span>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Ping</p>
+            <p id="pingValue" class="text-lg font-semibold text-amber-700">0 ms</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Download</p>
+            <p id="downloadValue" class="text-lg font-semibold text-emerald-700">0 Mbps</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Upload</p>
+            <p id="uploadValue" class="text-lg font-semibold text-blue-700">0 Mbps</p>
+          </div>
+        </div>
+        <div class="mt-4">
+          <canvas id="speedChart" height="120"></canvas>
+        </div>
+      </section>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-blue-700">Network Monitor</h2>
+          <div class="flex items-center gap-2">
+            <button
+              id="refreshNetworkBtn"
+              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Refresh
+            </button>
+            <button
+              id="toggleMonitorBtn"
+              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+            >
+              Start Monitoring
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Live Upload</p>
+            <p id="liveUpload" class="text-lg font-semibold text-blue-700">0 Mbps</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Live Download</p>
+            <p id="liveDownload" class="text-lg font-semibold text-emerald-700">0 Mbps</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Total Sent</p>
+            <p id="totalSent" class="text-lg font-semibold text-slate-800">0 B</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Total Received</p>
+            <p id="totalReceived" class="text-lg font-semibold text-slate-800">0 B</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-blue-700">IP Information</h2>
+          <button
+            id="refreshIpBtn"
+            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Refresh IP
+          </button>
+        </div>
+        <div class="space-y-2">
+          <p class="text-sm"><span class="text-slate-500">Public IP:</span> <span id="ipValue" class="font-medium">Loading...</span></p>
+          <p class="text-sm"><span class="text-slate-500">ISP:</span> <span id="ispValue" class="font-semibold text-blue-700">Loading...</span></p>
+          <p class="text-sm"><span class="text-slate-500">Location:</span> <span id="locationValue" class="font-medium">Loading...</span></p>
+          <p class="text-sm"><span class="text-slate-500">Organization:</span> <span id="organizationValue">Loading...</span></p>
+        </div>
+      </section>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-blue-700">Network Interfaces</h2>
+          <span class="text-sm text-slate-500">Highlighted rows are active interfaces</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full border border-slate-200 text-sm">
+            <thead class="bg-slate-50 text-left text-slate-600">
+              <tr>
+                <th class="px-3 py-2">Type</th>
+                <th class="px-3 py-2">Interface</th>
+                <th class="px-3 py-2">IP Address</th>
+                <th class="px-3 py-2">Status</th>
+                <th class="px-3 py-2">Upload</th>
+                <th class="px-3 py-2">Download</th>
+              </tr>
+            </thead>
+            <tbody id="interfaceTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="./script.js"></script>
+  </body>
+</html>

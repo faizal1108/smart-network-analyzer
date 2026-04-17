@@ -1,0 +1,58 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "rate(smart_network_bytes_received[1m])", "legendFormat": "Receive Rate", "refId": "A" },
+        { "expr": "rate(smart_network_bytes_sent[1m])", "legendFormat": "Send Rate", "refId": "B" }
+      ],
+      "title": "Host Network Throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "targets": [
+        { "expr": "rate(process_cpu_seconds_total[1m])", "legendFormat": "API CPU Rate", "refId": "A" }
+      ],
+      "title": "FastAPI Process CPU",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "id": 3,
+      "targets": [
+        { "expr": "smart_network_bytes_received", "legendFormat": "Bytes Received", "refId": "A" },
+        { "expr": "smart_network_bytes_sent", "legendFormat": "Bytes Sent", "refId": "B" }
+      ],
+      "title": "Host Total Network Bytes",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["smart-network-analyzer"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timezone": "browser",
+  "title": "Smart Network Analyzer",
+  "uid": "smart-network-analyzer",
+  "version": 1,
+  "weekStart": ""
+}
