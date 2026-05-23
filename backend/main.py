@@ -1,6 +1,13 @@
+import asyncio
+import platform
+import re
 import socket
+import statistics
+import subprocess
 import time
+from collections import deque
 from datetime import datetime, timezone
+from threading import Lock
 from typing import AsyncGenerator
 from typing import Any
 
@@ -8,6 +15,7 @@ import httpx
 import psutil
 from fastapi import FastAPI, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 from prometheus_client import Gauge
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -63,7 +71,8 @@ async def upload_test(file: UploadFile) -> JSONResponse:
         if not chunk:
             break
         total_bytes += len(chunk)
-    elapsed = max(time.perf_counter() - start, 1e-6)
+    # Minimum 1 ms avoids divide-by-near-zero on fast local uploads (bogus Gbit/s values).
+    elapsed = max(time.perf_counter() - start, 0.001)
     upload_mbps = (total_bytes * 8) / elapsed / 1_000_000
     return JSONResponse(
         {
@@ -280,3 +289,336 @@ async def ip_info() -> JSONResponse:
         }
 
     return JSONResponse(result)
+
+
+# NEW FEATURE START
+
+STABILITY_PING_HOST = "8.8.8.8"
+WEBSITE_PING_TIMEOUT_SEC = 3.0
+_WEBSITE_CHECK_PORTS = (443, 80)
+_IPV4_PATTERN = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+_SECURITY_SCAN_PORTS = [21, 22, 23, 80, 443, 445, 3389, 8080, 8443, 5900]
+_RISKY_PORTS = {21, 23, 135, 139, 445, 3389, 5900, 6379, 27017}
+_VPN_KEYWORDS = ("vpn", "nordvpn", "expressvpn", "mullvad", "proton", "surfshark", "private internet")
+_PROXY_KEYWORDS = ("proxy", "squid", "datacenter", "hosting")
+
+_stability_lock = Lock()
+_stability_latencies: deque[float] = deque(maxlen=30)
+_stability_timeouts = 0
+_stability_attempts = 0
+
+
+class WebsitePingRequest(BaseModel):
+    host: str = Field(..., min_length=1, max_length=253)
+
+
+def _normalize_host(host: str) -> str:
+    cleaned = host.strip().lower()
+    cleaned = re.sub(r"^https?://", "", cleaned)
+    cleaned = cleaned.split("/")[0].split(":")[0]
+    return cleaned
+
+
+def _parse_ping_latency_ms(output: str) -> float | None:
+    match = re.search(r"time[=<](\d+(?:\.\d+)?)\s*ms", output, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    return None
+
+
+def _tcp_latency_ms(host: str, port: int = 53, timeout_sec: float = 2.0) -> tuple[bool, float | None]:
+    start = time.perf_counter()
+    try:
+        with socket.create_connection((host, port), timeout=timeout_sec):
+            return True, (time.perf_counter() - start) * 1000
+    except OSError:
+        return False, None
+
+
+def _icmp_ping_once(host: str, timeout_sec: float = 2.0) -> tuple[bool, float | None]:
+    system = platform.system().lower()
+    if system == "windows":
+        cmd = ["ping", "-n", "1", "-w", str(int(timeout_sec * 1000)), host]
+    else:
+        wait_sec = max(1, int(timeout_sec))
+        cmd = ["ping", "-c", "1", "-W", str(wait_sec), host]
+
+    try:
+        completed = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec + 1.5,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return _tcp_latency_ms(host, port=53, timeout_sec=timeout_sec)
+
+    if completed.returncode != 0:
+        return _tcp_latency_ms(host, port=53, timeout_sec=timeout_sec)
+
+    latency = _parse_ping_latency_ms(completed.stdout or "")
+    if latency is None:
+        latency = _parse_ping_latency_ms(completed.stderr or "")
+    if latency is None:
+        return _tcp_latency_ms(host, port=53, timeout_sec=timeout_sec)
+    return True, latency
+
+
+def _compute_jitter(latencies: list[float]) -> float:
+    if len(latencies) < 2:
+        return 0.0
+    deltas = [abs(latencies[i] - latencies[i - 1]) for i in range(1, len(latencies))]
+    return round(statistics.mean(deltas), 2)
+
+
+def _stability_quality(ping_ms: float, packet_loss: float) -> str:
+    if ping_ms < 50 and packet_loss < 2:
+        return "Excellent"
+    if ping_ms < 100:
+        return "Good"
+    if ping_ms < 150:
+        return "Fair"
+    return "Poor"
+
+
+def _connection_quality_score(ping_ms: float, packet_loss: float, jitter: float) -> int:
+    score = 100.0
+    score -= min(ping_ms * 0.35, 45)
+    score -= min(packet_loss * 4, 35)
+    score -= min(jitter * 0.5, 15)
+    return int(max(0, min(100, round(score))))
+
+
+def _record_stability_sample(success: bool, latency_ms: float | None) -> dict[str, Any]:
+    global _stability_timeouts, _stability_attempts
+
+    with _stability_lock:
+        _stability_attempts += 1
+        if success and latency_ms is not None:
+            _stability_latencies.append(latency_ms)
+        else:
+            _stability_timeouts += 1
+
+        latencies = list(_stability_latencies)
+        attempts = max(_stability_attempts, 1)
+        packet_loss = round((_stability_timeouts / attempts) * 100, 2)
+        current_ping = round(latencies[-1], 2) if latencies else 0.0
+        avg_ping = round(statistics.mean(latencies), 2) if latencies else 0.0
+        jitter = _compute_jitter(latencies)
+        quality = _stability_quality(current_ping, packet_loss)
+        score = _connection_quality_score(current_ping, packet_loss, jitter)
+
+    return {
+        "ping": current_ping,
+        "average_latency": avg_ping,
+        "jitter": jitter,
+        "packet_loss": packet_loss,
+        "timeout_count": _stability_timeouts,
+        "quality": quality,
+        "connection_quality_score": score,
+        "network_status": quality,
+    }
+
+
+def _scan_local_open_ports() -> list[int]:
+    open_ports: list[int] = []
+    for port in _SECURITY_SCAN_PORTS:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.25)
+        try:
+            if sock.connect_ex(("127.0.0.1", port)) == 0:
+                open_ports.append(port)
+        finally:
+            sock.close()
+    return sorted(open_ports)
+
+
+def _detect_vpn_proxy(org_text: str) -> tuple[bool, bool]:
+    lowered = org_text.lower()
+    vpn = any(keyword in lowered for keyword in _VPN_KEYWORDS)
+    proxy = any(keyword in lowered for keyword in _PROXY_KEYWORDS)
+    return vpn, proxy
+
+
+def _security_risk_level(score: int) -> str:
+    if score >= 71:
+        return "Low"
+    if score >= 31:
+        return "Medium"
+    return "High"
+
+
+async def _ping_host_async(host: str, timeout_sec: float = WEBSITE_PING_TIMEOUT_SEC) -> tuple[bool, float | None]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _icmp_ping_once, host, timeout_sec)
+
+
+def _website_reachability_check(host: str, timeout_sec: float = WEBSITE_PING_TIMEOUT_SEC) -> tuple[bool, float | None]:
+    """
+    Websites are often online on HTTP/HTTPS but block ICMP ping.
+    Try TCP 443/80 first; fall back to ICMP for IPs like 8.8.8.8.
+    """
+    try:
+        infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        return False, None
+
+    if not infos:
+        return False, None
+
+    addresses: list[str] = []
+    seen: set[str] = set()
+    for info in infos:
+        ip = info[4][0]
+        if ip not in seen:
+            seen.add(ip)
+            addresses.append(ip)
+
+    per_try_timeout = max(timeout_sec / len(_WEBSITE_CHECK_PORTS), 1.5)
+    best_latency: float | None = None
+
+    for ip in addresses:
+        for port in _WEBSITE_CHECK_PORTS:
+            ok, latency_ms = _tcp_latency_ms(ip, port=port, timeout_sec=per_try_timeout)
+            if ok and latency_ms is not None:
+                if best_latency is None or latency_ms < best_latency:
+                    best_latency = latency_ms
+
+    if best_latency is not None:
+        return True, best_latency
+
+    if _IPV4_PATTERN.match(host):
+        ok, latency_ms = _icmp_ping_once(host, timeout_sec)
+        if ok and latency_ms is not None:
+            return True, latency_ms
+        ok, latency_ms = _tcp_latency_ms(host, port=53, timeout_sec=per_try_timeout)
+        if ok and latency_ms is not None:
+            return True, latency_ms
+
+    ok, latency_ms = _icmp_ping_once(host, timeout_sec)
+    if ok and latency_ms is not None:
+        return True, latency_ms
+
+    return False, None
+
+
+async def _website_reachability_async(
+    host: str, timeout_sec: float = WEBSITE_PING_TIMEOUT_SEC
+) -> tuple[bool, float | None]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _website_reachability_check, host, timeout_sec)
+
+
+@app.get("/network-stability")
+async def network_stability() -> JSONResponse:
+    success, latency_ms = await _ping_host_async(STABILITY_PING_HOST, timeout_sec=2.0)
+    payload = _record_stability_sample(success, latency_ms)
+    return JSONResponse(payload)
+
+
+@app.post("/website-ping")
+async def website_ping(body: WebsitePingRequest) -> JSONResponse:
+    host = _normalize_host(body.host)
+    if not host or not re.match(r"^[a-z0-9.-]+$", host):
+        return JSONResponse(
+            {
+                "host": body.host,
+                "reachable": False,
+                "latency": None,
+                "status": "Offline",
+            },
+            status_code=400,
+        )
+
+    try:
+        socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return JSONResponse(
+            {
+                "host": host,
+                "reachable": False,
+                "latency": None,
+                "status": "Offline",
+            }
+        )
+
+    success, latency_ms = await _website_reachability_async(host, timeout_sec=WEBSITE_PING_TIMEOUT_SEC)
+    if success and latency_ms is not None:
+        return JSONResponse(
+            {
+                "host": host,
+                "reachable": True,
+                "latency": round(latency_ms, 2),
+                "status": "Online",
+            }
+        )
+
+    return JSONResponse(
+        {
+            "host": host,
+            "reachable": False,
+            "latency": None,
+            "status": "Offline",
+        }
+    )
+
+
+@app.get("/security-score")
+async def security_score() -> JSONResponse:
+    score = 100
+    ip_data = await _lookup_public_ip_from_server()
+    public_ip = str(ip_data.get("ip") or "")
+    is_public_ip = bool(public_ip) and not _is_private_ip(public_ip)
+    is_private_network = not is_public_ip
+
+    org_text = f"{ip_data.get('isp', '')} {ip_data.get('organization', '')}"
+    vpn, proxy = _detect_vpn_proxy(org_text)
+
+    open_ports = _scan_local_open_ports()
+    for port in open_ports:
+        if port in _RISKY_PORTS:
+            score -= 10
+
+    if proxy:
+        score -= 15
+    if vpn:
+        score += 10
+    if is_private_network:
+        score += 5
+
+    interfaces = _list_interfaces()
+    active = [iface for iface in interfaces if iface["is_up"]]
+    has_wifi = any(iface["type"] == "wifi" for iface in active)
+    has_ethernet = any(iface["type"] == "ethernet" for iface in active)
+    if not has_wifi and not has_ethernet and active:
+        score -= 5
+
+    https_ok = False
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get("https://www.google.com", follow_redirects=True)
+            https_ok = response.status_code < 500
+    except Exception:
+        https_ok = False
+    if not https_ok:
+        score -= 5
+
+    score = max(0, min(100, score))
+    risk = _security_risk_level(score)
+
+    return JSONResponse(
+        {
+            "score": score,
+            "vpn": vpn,
+            "proxy": proxy,
+            "open_ports": open_ports,
+            "risk": risk,
+            "public_ip": is_public_ip,
+            "private_network": is_private_network,
+            "https": https_ok,
+            "network_type": "wifi" if has_wifi else ("ethernet" if has_ethernet else "other"),
+        }
+    )
+
+# NEW FEATURE END

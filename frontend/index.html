@@ -6,23 +6,118 @@
     <title>Smart Network Analyzer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+      #providerMap { z-index: 0; }
+      #locationMap { z-index: 0; }
+      .leaflet-container { font-family: inherit; }
+      @keyframes locpulse {
+        0%, 100% { transform: scale(1); opacity: 0.6; }
+        50% { transform: scale(2.2); opacity: 0.1; }
+      }
+      @keyframes gpsPulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+      }
+      .gps-badge {
+        animation: gpsPulse 2s infinite;
+      }
+      #exportReportRoot {
+        position: fixed;
+        left: -10000px;
+        top: 0;
+        width: 1120px;
+        pointer-events: none;
+        z-index: -1;
+      }
+      #shareModalBackdrop.share-open {
+        display: flex;
+      }
+    </style>
   </head>
   <body class="min-h-screen bg-slate-100 text-slate-900">
     <nav class="border-b border-slate-200 bg-white">
-      <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
+      <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4">
         <h1 class="text-xl font-semibold text-blue-700">Smart Network Analyzer</h1>
-        <span class="text-sm text-slate-500">Real-Time Network Insights</span>
+        <div class="flex items-center gap-3">
+          <span class="hidden text-sm text-slate-500 sm:inline">Real-Time Network Insights</span>
+          <button
+            id="shareReportBtn"
+            type="button"
+            class="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+            </svg>
+            Share
+          </button>
+        </div>
       </div>
     </nav>
 
+    <div
+      id="shareModalBackdrop"
+      class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4"
+      role="dialog"
+      aria-labelledby="shareModalTitle"
+      aria-modal="true"
+    >
+      <div class="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+        <div class="mb-4 flex items-start justify-between">
+          <div>
+            <h2 id="shareModalTitle" class="text-lg font-semibold text-slate-900">Share network report</h2>
+            <p class="mt-1 text-sm text-slate-500">Download a professional snapshot or copy the dashboard link.</p>
+          </div>
+          <button id="closeShareModalBtn" type="button" class="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Close">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div id="shareModalStatus" class="mb-3 hidden rounded-md px-3 py-2 text-sm"></div>
+        <div class="flex flex-col gap-2">
+          <button
+            id="downloadReportImageBtn"
+            type="button"
+            class="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-500"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download as image (PNG)
+          </button>
+          <button
+            id="copyShareLinkBtn"
+            type="button"
+            class="flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            Copy share link
+          </button>
+          <button
+            id="nativeShareBtn"
+            type="button"
+            class="hidden items-center justify-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
+          >
+            Share via device…
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="exportReportRoot" aria-hidden="true"></div>
+
     <main class="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-2">
+
+      <!-- Speed Test -->
       <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-lg font-semibold text-blue-700">Speed Test</h2>
-          <button
-            id="startSpeedTestBtn"
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
-          >
+          <button id="startSpeedTestBtn" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
             Start Test
           </button>
         </div>
@@ -37,11 +132,11 @@
           </div>
           <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p class="text-xs text-slate-500">Download</p>
-            <p id="downloadValue" class="text-lg font-semibold text-emerald-700">0 Mbps</p>
+            <p id="downloadValue" class="text-lg font-semibold text-emerald-700">0 Mbit/s</p>
           </div>
           <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p class="text-xs text-slate-500">Upload</p>
-            <p id="uploadValue" class="text-lg font-semibold text-blue-700">0 Mbps</p>
+            <p id="uploadValue" class="text-lg font-semibold text-blue-700">0 Mbit/s</p>
           </div>
         </div>
         <div class="mt-4">
@@ -49,25 +144,19 @@
         </div>
       </section>
 
+      <!-- Network Monitor -->
       <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-lg font-semibold text-blue-700">Network Monitor</h2>
           <div class="flex items-center gap-2">
-            <button
-              id="refreshNetworkBtn"
-              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-            >
+            <button id="refreshNetworkBtn" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
               Refresh
             </button>
-            <button
-              id="toggleMonitorBtn"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
-            >
+            <button id="toggleMonitorBtn" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
               Start Monitoring
             </button>
           </div>
         </div>
-
         <div class="grid grid-cols-2 gap-3">
           <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p class="text-xs text-slate-500">Live Upload</p>
@@ -88,24 +177,234 @@
         </div>
       </section>
 
+      <!-- IP Information -->
       <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-lg font-semibold text-blue-700">IP Information</h2>
-          <button
-            id="refreshIpBtn"
-            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-          >
+          <button id="refreshIpBtn" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
             Refresh IP
           </button>
         </div>
-        <div class="space-y-2">
-          <p class="text-sm"><span class="text-slate-500">Public IP:</span> <span id="ipValue" class="font-medium">Loading...</span></p>
+        <div class="space-y-2 mb-4">
+          <p class="text-sm"><span class="text-slate-500">Your IP:</span> <span id="ipValue" class="font-semibold text-blue-700">Loading...</span></p>
+          <p class="text-sm"><span class="text-slate-500">IPv4:</span> <span id="ipv4Value" class="font-medium">Loading...</span></p>
+          <p class="text-sm"><span class="text-slate-500">IPv6:</span> <span id="ipv6Value" class="font-medium">Loading...</span></p>
           <p class="text-sm"><span class="text-slate-500">ISP:</span> <span id="ispValue" class="font-semibold text-blue-700">Loading...</span></p>
-          <p class="text-sm"><span class="text-slate-500">Location:</span> <span id="locationValue" class="font-medium">Loading...</span></p>
+          <p class="text-sm"><span class="text-slate-500">Location (IP-based):</span> <span id="locationValue" class="font-medium">Loading...</span></p>
           <p class="text-sm"><span class="text-slate-500">Organization:</span> <span id="organizationValue">Loading...</span></p>
+        </div>
+        <div class="mb-2">
+          <h3 class="text-sm font-semibold text-slate-700 mb-2">Service Provider Map (IP-based)</h3>
+          <div id="providerMap" class="h-64 w-full rounded-lg border border-slate-200 z-0"></div>
+          <p class="text-xs text-slate-400 mt-1">📍 This shows ISP location (Chennai), not your actual device location</p>
         </div>
       </section>
 
+      <!-- Browser Location Section - Enhanced -->
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-blue-700">📍 My Actual Location</h2>
+          <div class="flex gap-2">
+            <button
+              id="getLocationBtn"
+              class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 flex items-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Locate Me
+            </button>
+            <button
+              id="manualLocationBtn"
+              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              📝 Set Manually
+            </button>
+          </div>
+        </div>
+
+        <!-- Status / error message -->
+        <div id="locationStatus" class="mb-3 hidden rounded-md px-3 py-2 text-sm"></div>
+
+        <!-- Manual location input (hidden by default) -->
+        <div id="manualLocationPanel" class="mb-4 hidden p-3 bg-slate-50 rounded-lg border border-slate-200">
+          <p class="text-sm font-medium text-slate-700 mb-2">Enter Coimbatore location:</p>
+          <div class="grid grid-cols-2 gap-2 mb-2">
+            <input type="text" id="manualLat" placeholder="Latitude (e.g., 11.0168)" class="px-3 py-2 border rounded-md text-sm">
+            <input type="text" id="manualLng" placeholder="Longitude (e.g., 76.9558)" class="px-3 py-2 border rounded-md text-sm">
+          </div>
+          <div class="flex gap-2">
+            <button id="applyManualLocation" class="bg-blue-600 text-white px-3 py-1 rounded-md text-sm">Apply</button>
+            <button id="cancelManualLocation" class="border border-slate-300 px-3 py-1 rounded-md text-sm">Cancel</button>
+          </div>
+          <p class="text-xs text-slate-400 mt-2">💡 Coimbatore center: 11.0168°N, 76.9558°E</p>
+        </div>
+
+        <!-- Coordinates info -->
+        <div id="locationInfo" class="grid grid-cols-2 gap-3 mb-4" style="display:none">
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Latitude</p>
+            <p id="latValue" class="text-base font-semibold text-slate-800">—</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Longitude</p>
+            <p id="lngValue" class="text-base font-semibold text-slate-800">—</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Accuracy</p>
+            <p id="accuracyValue" class="text-base font-semibold text-slate-800">—</p>
+            <p id="accuracyWarning" class="text-xs text-amber-600 hidden">⚠️ Low accuracy (IP-based)</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Address</p>
+            <p id="addressValue" class="text-sm font-medium text-slate-800 break-words">—</p>
+          </div>
+        </div>
+
+        <!-- Map -->
+        <div id="locationMapWrapper" class="hidden">
+          <h3 class="text-sm font-semibold text-slate-700 mb-2">Your Location on Map</h3>
+          <div id="locationMap" class="h-64 w-full rounded-lg border border-slate-200"></div>
+          <p class="mt-2 text-xs text-slate-400" id="locationSourceNote">
+            📍 Blue marker = your actual device location (GPS/WiFi)
+          </p>
+        </div>
+
+        <!-- Placeholder when not yet located -->
+        <div id="locationPlaceholder" class="flex flex-col items-center justify-center h-40 text-slate-400 text-sm gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <p>Click <strong>Locate Me</strong> to see your position on the map</p>
+          <p class="text-xs text-slate-300">Browser will ask for permission - enable GPS for best accuracy</p>
+        </div>
+
+        <!-- Tips for better accuracy -->
+        <div id="accuracyTips" class="mt-3 text-xs text-slate-500 hidden p-2 bg-amber-50 rounded-lg border border-amber-200">
+          <strong>💡 For better accuracy:</strong>
+          <ul class="list-disc list-inside mt-1">
+            <li>Enable GPS/Location on your phone/device</li>
+            <li>Use HTTPS connection (required for GPS)</li>
+            <li>Allow precise location when browser asks</li>
+            <li>Try moving outdoors for better GPS signal</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- NEW FEATURE START -->
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-blue-700">Internet Stability Monitor</h2>
+          <span id="stabilityQualityBadge" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">—</span>
+        </div>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Current Ping</p>
+            <p id="stabilityPingValue" class="text-lg font-semibold text-amber-700">— ms</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Jitter</p>
+            <p id="stabilityJitterValue" class="text-lg font-semibold text-blue-700">— ms</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Packet Loss</p>
+            <p id="stabilityPacketLossValue" class="text-lg font-semibold text-red-700">— %</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Connection Quality Score</p>
+            <p id="stabilityScoreValue" class="text-lg font-semibold text-emerald-700">—</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:col-span-2">
+            <p class="text-xs text-slate-500">Network Status</p>
+            <p id="stabilityStatusValue" class="text-lg font-semibold text-slate-800">—</p>
+          </div>
+        </div>
+        <div class="mt-4">
+          <canvas id="stabilityPingChart" height="120"></canvas>
+        </div>
+      </section>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="mb-4">
+          <h2 class="text-lg font-semibold text-blue-700">Website Ping Tester</h2>
+        </div>
+        <div class="mb-4 flex flex-col gap-2 sm:flex-row">
+          <input
+            id="websitePingInput"
+            type="text"
+            placeholder="Enter website (e.g. google.com)"
+            class="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          />
+          <button
+            id="websitePingBtn"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+          >
+            Test
+          </button>
+        </div>
+        <p class="mb-3 text-xs text-slate-500">Examples: google.com, youtube.com, github.com — checks HTTPS/HTTP (ports 443/80), not ICMP ping only.</p>
+        <div class="mb-4 grid grid-cols-3 gap-3">
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Website</p>
+            <p id="websitePingHost" class="text-sm font-semibold text-slate-800">—</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Latency</p>
+            <p id="websitePingLatency" class="text-sm font-semibold text-amber-700">—</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs text-slate-500">Status</p>
+            <p id="websitePingStatus" class="text-sm font-semibold">—</p>
+          </div>
+        </div>
+        <h3 class="mb-2 text-sm font-semibold text-slate-700">Recent Tests</h3>
+        <div class="overflow-x-auto">
+          <table class="min-w-full border border-slate-200 text-sm">
+            <thead class="bg-slate-50 text-left text-slate-600">
+              <tr>
+                <th class="px-3 py-2">Website</th>
+                <th class="px-3 py-2">Latency</th>
+                <th class="px-3 py-2">Status</th>
+              </tr>
+            </thead>
+            <tbody id="websitePingHistoryBody">
+              <tr>
+                <td colspan="3" class="px-3 py-4 text-slate-500">No tests yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="mb-4">
+          <h2 class="text-lg font-semibold text-blue-700">Security Score</h2>
+        </div>
+        <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+          <div class="relative flex h-36 w-36 shrink-0 items-center justify-center">
+            <div
+              id="securityGaugeRing"
+              class="absolute inset-0 rounded-full"
+              style="background: conic-gradient(#e2e8f0 0deg, #e2e8f0 360deg)"
+            ></div>
+            <div class="absolute inset-3 flex flex-col items-center justify-center rounded-full bg-white text-center">
+              <p class="text-xs text-slate-500">Security Score</p>
+              <p id="securityScoreValue" class="text-2xl font-bold text-slate-800">—/100</p>
+            </div>
+          </div>
+          <div class="w-full space-y-2 text-sm">
+            <p><span class="text-slate-500">VPN:</span> <span id="securityVpnValue" class="font-medium">—</span></p>
+            <p><span class="text-slate-500">Proxy:</span> <span id="securityProxyValue" class="font-medium">—</span></p>
+            <p><span class="text-slate-500">Risk:</span> <span id="securityRiskValue" class="font-semibold">—</span></p>
+            <p><span class="text-slate-500">Open Ports:</span> <span id="securityOpenPortsValue" class="font-medium">—</span></p>
+          </div>
+        </div>
+      </section>
+      <!-- NEW FEATURE END -->
+
+      <!-- Network Interfaces (full width) -->
       <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-lg font-semibold text-blue-700">Network Interfaces</h2>
@@ -127,8 +426,1178 @@
           </table>
         </div>
       </section>
+
     </main>
 
-    <script src="./script.js"></script>
+    <script>
+      const API_BASE = "/api";
+
+      const toggleMonitorBtn = document.getElementById("toggleMonitorBtn");
+      const refreshNetworkBtn = document.getElementById("refreshNetworkBtn");
+      const refreshIpBtn = document.getElementById("refreshIpBtn");
+      const startSpeedTestBtn = document.getElementById("startSpeedTestBtn");
+      const speedLoaderEl = document.getElementById("speedLoader");
+      const speedLoaderTextEl = document.getElementById("speedLoaderText");
+      const pingValueEl = document.getElementById("pingValue");
+      const downloadValueEl = document.getElementById("downloadValue");
+      const uploadValueEl = document.getElementById("uploadValue");
+      const liveUploadEl = document.getElementById("liveUpload");
+      const liveDownloadEl = document.getElementById("liveDownload");
+      const totalSentEl = document.getElementById("totalSent");
+      const totalReceivedEl = document.getElementById("totalReceived");
+      const interfaceTableBody = document.getElementById("interfaceTableBody");
+
+      const ipValueEl = document.getElementById("ipValue");
+      const ipv4ValueEl = document.getElementById("ipv4Value");
+      const ipv6ValueEl = document.getElementById("ipv6Value");
+      const ispValueEl = document.getElementById("ispValue");
+      const locationValueEl = document.getElementById("locationValue");
+      const organizationValueEl = document.getElementById("organizationValue");
+
+      let monitorInterval = null;
+      let previousStats = null;
+      let speedChart;
+      let providerMap = null;
+      let userMarker = null;
+
+      // Coimbatore coordinates
+      const COIMBATORE = { lat: 11.0168, lng: 76.9558 };
+
+      // ── Provider Map (IP-based) ──────────────────────────────────────────────────
+
+      function initProviderMap() {
+        const mapContainer = document.getElementById("providerMap");
+        if (!mapContainer || typeof L === "undefined") return;
+
+        providerMap = L.map("providerMap").setView([20, 0], 2);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: "© OpenStreetMap",
+        }).addTo(providerMap);
+      }
+
+      function updateMapLocation(lat, lon, isp) {
+        if (!providerMap) return;
+
+        providerMap.setView([lat, lon], 12);
+
+        if (userMarker) providerMap.removeLayer(userMarker);
+
+        userMarker = L.marker([lat, lon], { title: "ISP Location" })
+          .addTo(providerMap)
+          .bindPopup(`<b>ISP Location (Estimated)</b><br/>${isp}<br/><i>Not your actual device location</i>`)
+          .openPopup();
+      }
+
+      // ── Utilities ────────────────────────────────────────────────────────────────
+
+      function formatBytes(bytes) {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(2)} KB`;
+        if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(2)} MB`;
+        return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+      }
+
+      function toMbps(bytesPerSecond) {
+        return (bytesPerSecond * 8) / 1_000_000;
+      }
+
+      /** Megabits per second (decimal Mbit/s), e.g. 23.5 */
+      function bytesToMbitPerSec(bytes, elapsedSec) {
+        const seconds = Math.max(elapsedSec, 0.001);
+        return (bytes * 8) / seconds / 1_000_000;
+      }
+
+      function formatMbitPerSec(mbitPerSec) {
+        return `${Number(mbitPerSec).toFixed(1)} Mbit/s`;
+      }
+
+      async function fetchJson(path, options = {}) {
+        const response = await fetch(`${API_BASE}${path}`, options);
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || `Request failed: ${response.status}`);
+        }
+        return response.json();
+      }
+
+      // ── Speed Test ───────────────────────────────────────────────────────────────
+
+      function initSpeedChart() {
+        const chartContext = document.getElementById("speedChart");
+        if (!chartContext || typeof Chart === "undefined") return;
+        speedChart = new Chart(chartContext, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              { label: "Download Mbit/s", data: [], borderColor: "#059669", tension: 0.3 },
+              { label: "Upload Mbit/s", data: [], borderColor: "#2563eb", tension: 0.3 },
+              { label: "Ping ms", data: [], borderColor: "#b45309", tension: 0.3 },
+            ],
+          },
+          options: { responsive: true, maintainAspectRatio: false },
+        });
+      }
+
+      function addSpeedPoint({ ping, download, upload }) {
+        if (!speedChart) return;
+        speedChart.data.labels.push(new Date().toLocaleTimeString());
+        speedChart.data.datasets[0].data.push(download);
+        speedChart.data.datasets[1].data.push(upload);
+        speedChart.data.datasets[2].data.push(ping);
+        if (speedChart.data.labels.length > 10) {
+          speedChart.data.labels.shift();
+          speedChart.data.datasets.forEach((dataset) => dataset.data.shift());
+        }
+        speedChart.update();
+      }
+
+      function createUploadBlob(sizeMb = 5) {
+        const totalBytes = sizeMb * 1024 * 1024;
+        const maxChunk = 65536;
+        const bytes = new Uint8Array(totalBytes);
+        for (let offset = 0; offset < totalBytes; offset += maxChunk) {
+          const end = Math.min(offset + maxChunk, totalBytes);
+          crypto.getRandomValues(bytes.subarray(offset, end));
+        }
+        return new Blob([bytes], { type: "application/octet-stream" });
+      }
+
+      async function runPingTest() {
+        const start = performance.now();
+        await fetchJson("/ping");
+        return performance.now() - start;
+      }
+
+      const SPEED_TEST_SIZE_MB = 10;
+
+      async function runDownloadTest() {
+        const start = performance.now();
+        const response = await fetch(`${API_BASE}/download-test?size_mb=${SPEED_TEST_SIZE_MB}`);
+        if (!response.ok) throw new Error("Download test failed");
+
+        let receivedBytes = 0;
+        if (response.body) {
+          const reader = response.body.getReader();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            receivedBytes += value.byteLength;
+          }
+        } else {
+          const blob = await response.blob();
+          receivedBytes = blob.size;
+        }
+
+        const elapsedSec = (performance.now() - start) / 1000;
+        return bytesToMbitPerSec(receivedBytes, elapsedSec);
+      }
+
+      async function runUploadTest() {
+        const uploadBlob = createUploadBlob(SPEED_TEST_SIZE_MB);
+        const formData = new FormData();
+        formData.append("file", uploadBlob, "upload-test.bin");
+
+        const start = performance.now();
+        const response = await fetch(`${API_BASE}/upload-test`, { method: "POST", body: formData });
+        if (!response.ok) throw new Error("Upload test failed");
+        await response.json();
+
+        const elapsedSec = (performance.now() - start) / 1000;
+        return bytesToMbitPerSec(uploadBlob.size, elapsedSec);
+      }
+
+      async function startSpeedTest() {
+        const durationSeconds = 10;
+        startSpeedTestBtn.disabled = true;
+        startSpeedTestBtn.classList.add("opacity-60");
+        speedLoaderEl.classList.remove("hidden");
+        speedLoaderEl.classList.add("flex");
+        startSpeedTestBtn.textContent = `Running ${durationSeconds}s Test`;
+
+        const startedAt = performance.now();
+        const endAt = startedAt + durationSeconds * 1000;
+
+        const downloadSamples = [];
+        const uploadSamples = [];
+
+        try {
+          while (performance.now() < endAt) {
+            const remaining = Math.max(0, Math.ceil((endAt - performance.now()) / 1000));
+            speedLoaderTextEl.textContent = `Running speed test... ${remaining}s left`;
+
+            const ping = await runPingTest();
+            downloadSamples.push(await runDownloadTest());
+            uploadSamples.push(await runUploadTest());
+
+            const download =
+              downloadSamples.reduce((sum, value) => sum + value, 0) / downloadSamples.length;
+            const upload =
+              uploadSamples.reduce((sum, value) => sum + value, 0) / uploadSamples.length;
+
+            pingValueEl.textContent = `${ping.toFixed(2)} ms`;
+            downloadValueEl.textContent = formatMbitPerSec(download);
+            uploadValueEl.textContent = formatMbitPerSec(upload);
+            addSpeedPoint({ ping, download, upload });
+          }
+        } catch (error) {
+          alert(`Speed test failed: ${error.message}`);
+        } finally {
+          startSpeedTestBtn.disabled = false;
+          startSpeedTestBtn.classList.remove("opacity-60");
+          startSpeedTestBtn.textContent = "Start Test";
+          speedLoaderTextEl.textContent = "Running speed test...";
+          speedLoaderEl.classList.add("hidden");
+          speedLoaderEl.classList.remove("flex");
+        }
+      }
+
+      // ── Network Interfaces ───────────────────────────────────────────────────────
+
+      function interfaceIcon(type) {
+        if (type === "wifi") return "📶";
+        if (type === "ethernet") return "🔌";
+        return "🌐";
+      }
+
+      function renderInterfaceTable(currentInterfaces, previousInterfaceMap) {
+        interfaceTableBody.innerHTML = "";
+        if (!currentInterfaces.length) {
+          interfaceTableBody.innerHTML = `<tr><td colspan="6" class="px-3 py-4 text-slate-500">No interfaces found.</td></tr>`;
+          return;
+        }
+
+        currentInterfaces.forEach((networkInterface) => {
+          const prev = previousInterfaceMap.get(networkInterface.name);
+          const upBps = prev ? Math.max(0, networkInterface.bytes_sent - prev.bytes_sent) : 0;
+          const downBps = prev ? Math.max(0, networkInterface.bytes_received - prev.bytes_received) : 0;
+
+          const tr = document.createElement("tr");
+          tr.className = networkInterface.is_up ? "bg-emerald-50" : "bg-white";
+          tr.innerHTML = `
+            <td class="px-3 py-2">${interfaceIcon(networkInterface.type)}</td>
+            <td class="px-3 py-2 font-medium text-slate-700">${networkInterface.name}</td>
+            <td class="px-3 py-2 text-slate-600">${networkInterface.ip}</td>
+            <td class="px-3 py-2">
+              <span class="rounded-full px-2 py-1 text-xs ${networkInterface.is_up ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}">
+                ${networkInterface.status}
+              </span>
+            </td>
+            <td class="px-3 py-2 text-blue-700">${toMbps(upBps).toFixed(2)} Mbps</td>
+            <td class="px-3 py-2 text-emerald-700">${toMbps(downBps).toFixed(2)} Mbps</td>
+          `;
+          interfaceTableBody.appendChild(tr);
+        });
+      }
+
+      async function fetchAndRenderNetworkStats() {
+        const stats = await fetchJson("/network-stats");
+        totalSentEl.textContent = formatBytes(stats.bytes_sent);
+        totalReceivedEl.textContent = formatBytes(stats.bytes_received);
+
+        const previousInterfaceMap = new Map();
+        if (previousStats) {
+          const seconds = 1;
+          const sentPerSec = Math.max(0, stats.bytes_sent - previousStats.bytes_sent) / seconds;
+          const recvPerSec = Math.max(0, stats.bytes_received - previousStats.bytes_received) / seconds;
+          liveUploadEl.textContent = `${toMbps(sentPerSec).toFixed(2)} Mbps`;
+          liveDownloadEl.textContent = `${toMbps(recvPerSec).toFixed(2)} Mbps`;
+          previousStats.interfaces.forEach((item) => previousInterfaceMap.set(item.name, item));
+        }
+        renderInterfaceTable(stats.interfaces, previousInterfaceMap);
+        previousStats = stats;
+      }
+
+      function startMonitoring() {
+        if (monitorInterval) return;
+        toggleMonitorBtn.textContent = "Stop Monitoring";
+        toggleMonitorBtn.classList.remove("bg-blue-600");
+        toggleMonitorBtn.classList.add("bg-red-600", "hover:bg-red-500");
+        fetchAndRenderNetworkStats().catch((error) => console.error(error));
+        monitorInterval = setInterval(() => {
+          fetchAndRenderNetworkStats().catch((error) => console.error(error));
+        }, 1000);
+      }
+
+      function stopMonitoring() {
+        if (!monitorInterval) return;
+        clearInterval(monitorInterval);
+        monitorInterval = null;
+        toggleMonitorBtn.textContent = "Start Monitoring";
+        toggleMonitorBtn.classList.add("bg-blue-600");
+        toggleMonitorBtn.classList.remove("bg-red-600", "hover:bg-red-500");
+      }
+
+      toggleMonitorBtn.addEventListener("click", () => {
+        monitorInterval ? stopMonitoring() : startMonitoring();
+      });
+
+      refreshNetworkBtn.addEventListener("click", () => {
+        fetchAndRenderNetworkStats().catch((error) => console.error(error));
+      });
+
+      // ── IP Info ──────────────────────────────────────────────────────────────────
+
+      function applyIpPayload(data) {
+        if (ipValueEl) {
+          ipValueEl.textContent = data.ip || data.ipv4 || data.ipv6 || "—";
+        }
+        ispValueEl.textContent = data.isp || "Unknown";
+        const city = data.city || "";
+        const country = data.country || "";
+        locationValueEl.textContent = city && country ? `${city}, ${country}` : city || country || "Unknown";
+        organizationValueEl.textContent = data.organization || "Unknown";
+
+        if (data.lat != null && data.lon != null) {
+          updateMapLocation(parseFloat(data.lat), parseFloat(data.lon), data.isp || "Provider");
+        } else if (data.loc) {
+          const [la, lo] = data.loc.split(",").map(Number);
+          if (!isNaN(la) && !isNaN(lo)) updateMapLocation(la, lo, data.isp || "Provider");
+        }
+      }
+
+      async function getIPv4() {
+        try {
+          const res = await fetch("https://api.ipify.org?format=json");
+          if (!res.ok) throw new Error("IPv4 request failed");
+          const data = await res.json();
+          return data.ip || "Unavailable";
+        } catch {
+          return "Unavailable";
+        }
+      }
+
+      async function getIPv6() {
+        try {
+          const res = await fetch("https://api64.ipify.org?format=json");
+          if (!res.ok) throw new Error("IPv6 request failed");
+          const data = await res.json();
+          if (data.ip && data.ip.includes(":")) {
+            return data.ip;
+          }
+          return "IPv6 unavailable";
+        } catch {
+          return "IPv6 unavailable";
+        }
+      }
+
+      async function getGeoData() {
+        const sources = [
+          "https://ipapi.co/json/",
+          "https://ipinfo.io/json",
+        ];
+
+        for (const url of sources) {
+          try {
+            const res = await fetch(url, { mode: "cors" });
+            if (!res.ok) continue;
+            const p = await res.json();
+
+            if (url.includes("ipapi")) {
+              return {
+                ip: p.ip,
+                isp: p.org || "Unknown",
+                organization: p.org || "Unknown",
+                city: p.city || "",
+                country: p.country_name || p.country || "",
+                lat: p.latitude ?? null,
+                lon: p.longitude ?? null,
+              };
+            }
+
+            let lat = null;
+            let lon = null;
+            if (p.loc) {
+              [lat, lon] = p.loc.split(",").map(Number);
+            }
+
+            return {
+              ip: p.ip,
+              isp: p.org || "Unknown",
+              organization: p.org || "Unknown",
+              city: p.city || "",
+              country: p.country || "",
+              lat,
+              lon,
+            };
+          } catch {
+            continue;
+          }
+        }
+
+        return null;
+      }
+
+      async function loadIpInfo() {
+        ipValueEl.textContent = "Loading...";
+        ipv4ValueEl.textContent = "Loading...";
+        ipv6ValueEl.textContent = "Loading...";
+        ispValueEl.textContent = "Loading...";
+        locationValueEl.textContent = "Loading...";
+        organizationValueEl.textContent = "Loading...";
+
+        try {
+          const [ipv4, ipv6, geo] = await Promise.all([getIPv4(), getIPv6(), getGeoData()]);
+
+          ipv4ValueEl.textContent = ipv4;
+          ipv6ValueEl.textContent = ipv6;
+
+          if (geo) {
+            applyIpPayload(geo);
+          } else {
+            ispValueEl.textContent = "Unavailable";
+            locationValueEl.textContent = "Unavailable";
+            organizationValueEl.textContent = "Unavailable";
+          }
+        } catch (err) {
+          console.error(err);
+          ipValueEl.textContent = "Error";
+          ipv4ValueEl.textContent = "Error";
+          ipv6ValueEl.textContent = "Error";
+          ispValueEl.textContent = "Error";
+          locationValueEl.textContent = "Error";
+          organizationValueEl.textContent = "Error";
+        }
+      }
+
+      refreshIpBtn.addEventListener("click", loadIpInfo);
+      setInterval(loadIpInfo, 30000);
+      startSpeedTestBtn.addEventListener("click", startSpeedTest);
+
+      // ── Enhanced Location Feature with Manual Fallback ───────────────────────────
+
+      (function initLocationFeature() {
+        const getLocationBtn      = document.getElementById("getLocationBtn");
+        const manualLocationBtn   = document.getElementById("manualLocationBtn");
+        const manualLocationPanel = document.getElementById("manualLocationPanel");
+        const applyManualBtn      = document.getElementById("applyManualLocation");
+        const cancelManualBtn     = document.getElementById("cancelManualLocation");
+        const manualLat           = document.getElementById("manualLat");
+        const manualLng           = document.getElementById("manualLng");
+        const locationStatus      = document.getElementById("locationStatus");
+        const locationInfo        = document.getElementById("locationInfo");
+        const locationMapWrapper  = document.getElementById("locationMapWrapper");
+        const locationPlaceholder = document.getElementById("locationPlaceholder");
+        const latEl               = document.getElementById("latValue");
+        const lngEl               = document.getElementById("lngValue");
+        const accuracyEl          = document.getElementById("accuracyValue");
+        const accuracyWarning     = document.getElementById("accuracyWarning");
+        const addressEl           = document.getElementById("addressValue");
+        const accuracyTips        = document.getElementById("accuracyTips");
+        const locationSourceNote  = document.getElementById("locationSourceNote");
+
+        if (!getLocationBtn) return;
+
+        let locationMap     = null;
+        let locationMarker  = null;
+        let accuracyCircle  = null;
+        let watchId         = null;
+        let lastGeocode     = "";
+        let isManualMode    = false;
+
+        function showStatus(msg, type = "info") {
+          const colors = {
+            info:    "background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe",
+            error:   "background:#fef2f2;color:#b91c1c;border:1px solid #fecaca",
+            success: "background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0",
+            live:    "background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe",
+            warning: "background:#fffbeb;color:#b45309;border:1px solid #fde68a",
+          };
+          locationStatus.style.cssText = `display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;font-size:0.875rem;margin-bottom:12px;${colors[type]}`;
+          locationStatus.innerHTML = msg;
+        }
+
+        function hideStatus() {
+          locationStatus.style.display = "none";
+        }
+
+        function setButtonTracking(tracking) {
+          if (tracking) {
+            getLocationBtn.style.background = "#ef4444";
+            getLocationBtn.innerHTML = `
+              <svg xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+              Stop Tracking`;
+          } else {
+            getLocationBtn.style.background = "";
+            getLocationBtn.innerHTML = `
+              <svg xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+              </svg>
+              Locate Me`;
+          }
+        }
+
+        async function reverseGeocode(lat, lng) {
+          const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+          if (key === lastGeocode) return null;
+          lastGeocode = key;
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+              { headers: { "Accept-Language": "en" } }
+            );
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data.display_name || null;
+          } catch { return null; }
+        }
+
+        function renderLocationMap(lat, lng, accuracy, isManual = false) {
+          locationMapWrapper.style.display = "block";
+
+          if (!locationMap) {
+            locationMap = L.map("locationMap").setView([lat, lng], 16);
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+              attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
+              maxZoom: 19,
+            }).addTo(locationMap);
+          } else {
+            locationMap.panTo([lat, lng]);
+          }
+
+          const markerColor = isManual ? "#dc2626" : "#2563eb";
+          const pulseIcon = L.divIcon({
+            className: "",
+            html: `
+              <div style="position:relative;width:24px;height:24px;">
+                <div style="position:absolute;inset:0;border-radius:50%;
+                  background:rgba(37,99,235,0.2);animation:locpulse 1.8s infinite;"></div>
+                <div style="position:absolute;inset:5px;border-radius:50%;
+                  background:${markerColor};border:2.5px solid #fff;
+                  box-shadow:0 1px 5px rgba(0,0,0,0.4);"></div>
+              </div>`,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          });
+
+          if (locationMarker) locationMap.removeLayer(locationMarker);
+          if (accuracyCircle) locationMap.removeLayer(accuracyCircle);
+
+          locationMarker = L.marker([lat, lng], { icon: pulseIcon })
+            .addTo(locationMap)
+            .bindPopup(isManual ? `<b>Manual Location</b><br/>Coimbatore` : `<b>You are here</b><br>±${Math.round(accuracy)} m`)
+            .openPopup();
+
+          if (!isManual && accuracy && accuracy > 10) {
+            accuracyCircle = L.circle([lat, lng], {
+              radius: accuracy,
+              color: "#2563eb",
+              fillColor: "#3b82f6",
+              fillOpacity: 0.07,
+              weight: 1,
+            }).addTo(locationMap);
+          }
+
+          setTimeout(() => locationMap.invalidateSize(), 150);
+        }
+
+        async function updateLocationDisplay(lat, lng, accuracy, source = "gps") {
+          locationInfo.style.display = "grid";
+          locationPlaceholder.style.display = "none";
+          
+          latEl.textContent = lat.toFixed(6) + "°";
+          lngEl.textContent = lng.toFixed(6) + "°";
+          
+          const isAccurate = accuracy && accuracy < 100;
+          
+          if (source === "gps" && accuracy) {
+            accuracyEl.textContent = `±${Math.round(accuracy)} m`;
+            if (accuracy > 500) {
+              accuracyWarning.classList.remove("hidden");
+              accuracyTips.classList.remove("hidden");
+              showStatus(`⚠️ Low accuracy (${Math.round(accuracy)}m) - using estimated location. Enable GPS for better accuracy.`, "warning");
+              locationSourceNote.innerHTML = "📍 Yellow marker = approximate location (low accuracy)";
+            } else if (accuracy > 100) {
+              accuracyWarning.classList.remove("hidden");
+              accuracyTips.classList.remove("hidden");
+              locationSourceNote.innerHTML = "📍 Blue marker = approximate location (medium accuracy)";
+            } else {
+              accuracyWarning.classList.add("hidden");
+              accuracyTips.classList.add("hidden");
+              locationSourceNote.innerHTML = "📍 Blue marker = high accuracy GPS location";
+            }
+          } else if (source === "manual") {
+            accuracyEl.textContent = "Manual entry";
+            accuracyWarning.classList.add("hidden");
+            accuracyTips.classList.add("hidden");
+            locationSourceNote.innerHTML = "📍 Red marker = manually set location (Coimbatore)";
+          } else {
+            accuracyEl.textContent = "Unknown (IP-based)";
+            accuracyWarning.classList.remove("hidden");
+            accuracyTips.classList.remove("hidden");
+            locationSourceNote.innerHTML = "📍 Approximate location (IP-based)";
+          }
+
+          const address = await reverseGeocode(lat, lng);
+          if (address) addressEl.textContent = address;
+        }
+
+        async function onPosition(position) {
+          if (isManualMode) return;
+          
+          const { latitude, longitude, accuracy } = position.coords;
+          
+          // Check if accuracy is reasonable (not 50km+ which indicates IP fallback)
+          if (accuracy > 5000) {
+            showStatus(`⚠️ Low accuracy (${Math.round(accuracy/1000)}km) - This is likely IP-based location. For precise location, ensure GPS is enabled on your device.`, "warning");
+          } else if (accuracy > 500) {
+            showStatus(`📍 Location found (${Math.round(accuracy)}m accuracy)`, "info");
+          } else {
+            showStatus(`📍 Precise location acquired! (${Math.round(accuracy)}m accuracy)`, "success");
+          }
+
+          await updateLocationDisplay(latitude, longitude, accuracy, "gps");
+          renderLocationMap(latitude, longitude, accuracy, false);
+        }
+
+        function onError(err) {
+          stopTracking();
+          const messages = {
+            1: "❌ Permission denied — allow location access in your browser settings, or use 'Set Manually' to enter Coimbatore.",
+            2: "❌ Position unavailable — check device GPS or network. Try 'Set Manually'.",
+            3: "❌ Location request timed out. Try again or use 'Set Manually'.",
+          };
+          showStatus(messages[err.code] || "Geolocation error. Try using 'Set Manually'.", "error");
+          accuracyTips.classList.remove("hidden");
+        }
+
+        function startTracking() {
+          if (!navigator.geolocation) {
+            showStatus("Geolocation is not supported by your browser. Please use 'Set Manually'.", "error");
+            return;
+          }
+          isManualMode = false;
+          manualLocationPanel.classList.add("hidden");
+          showStatus("📍 Requesting location permission... Enable GPS for best accuracy.", "info");
+          watchId = navigator.geolocation.watchPosition(onPosition, onError, {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0,
+          });
+          setButtonTracking(true);
+        }
+
+        function stopTracking() {
+          if (watchId !== null) {
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+          }
+          setButtonTracking(false);
+          if (!isManualMode) {
+            showStatus("Tracking stopped. Use 'Locate Me' to restart or 'Set Manually' for Coimbatore.", "info");
+            setTimeout(hideStatus, 3000);
+          }
+        }
+
+        // Manual location for Coimbatore
+        function setManualLocation() {
+          const lat = parseFloat(manualLat.value);
+          const lng = parseFloat(manualLng.value);
+          
+          if (isNaN(lat) || isNaN(lng)) {
+            showStatus("Please enter valid latitude and longitude", "error");
+            return;
+          }
+          
+          if (watchId !== null) stopTracking();
+          
+          isManualMode = true;
+          manualLocationPanel.classList.add("hidden");
+          
+          updateLocationDisplay(lat, lng, null, "manual");
+          renderLocationMap(lat, lng, null, true);
+          showStatus(`📍 Location set to ${lat.toFixed(4)}°, ${lng.toFixed(4)}° (Coimbatore area)`, "success");
+          setTimeout(hideStatus, 3000);
+        }
+
+        function showManualPanel() {
+          if (watchId !== null) stopTracking();
+          manualLocationPanel.classList.remove("hidden");
+          manualLat.value = COIMBATORE.lat;
+          manualLng.value = COIMBATORE.lng;
+          showStatus("Enter Coimbatore coordinates or use the default values", "info");
+        }
+
+        getLocationBtn.addEventListener("click", () => {
+          if (watchId !== null) {
+            stopTracking();
+          } else {
+            startTracking();
+          }
+        });
+        
+        manualLocationBtn.addEventListener("click", showManualPanel);
+        applyManualBtn.addEventListener("click", setManualLocation);
+        cancelManualBtn.addEventListener("click", () => {
+          manualLocationPanel.classList.add("hidden");
+          hideStatus();
+        });
+      })();
+
+      // NEW FEATURE START
+
+      const stabilityPingValueEl = document.getElementById("stabilityPingValue");
+      const stabilityJitterValueEl = document.getElementById("stabilityJitterValue");
+      const stabilityPacketLossValueEl = document.getElementById("stabilityPacketLossValue");
+      const stabilityScoreValueEl = document.getElementById("stabilityScoreValue");
+      const stabilityStatusValueEl = document.getElementById("stabilityStatusValue");
+      const stabilityQualityBadgeEl = document.getElementById("stabilityQualityBadge");
+      const websitePingInputEl = document.getElementById("websitePingInput");
+      const websitePingBtnEl = document.getElementById("websitePingBtn");
+      const websitePingHostEl = document.getElementById("websitePingHost");
+      const websitePingLatencyEl = document.getElementById("websitePingLatency");
+      const websitePingStatusEl = document.getElementById("websitePingStatus");
+      const websitePingHistoryBodyEl = document.getElementById("websitePingHistoryBody");
+      const securityScoreValueEl = document.getElementById("securityScoreValue");
+      const securityGaugeRingEl = document.getElementById("securityGaugeRing");
+      const securityVpnValueEl = document.getElementById("securityVpnValue");
+      const securityProxyValueEl = document.getElementById("securityProxyValue");
+      const securityRiskValueEl = document.getElementById("securityRiskValue");
+      const securityOpenPortsValueEl = document.getElementById("securityOpenPortsValue");
+
+      let stabilityPingChart = null;
+      let stabilityInterval = null;
+      const websitePingHistory = [];
+
+      function stabilityQualityColors(quality) {
+        const map = {
+          Excellent: { badge: "bg-emerald-100 text-emerald-700", text: "text-emerald-700" },
+          Good: { badge: "bg-yellow-100 text-yellow-700", text: "text-yellow-700" },
+          Fair: { badge: "bg-orange-100 text-orange-700", text: "text-orange-700" },
+          Poor: { badge: "bg-red-100 text-red-700", text: "text-red-700" },
+        };
+        return map[quality] || { badge: "bg-slate-100 text-slate-600", text: "text-slate-700" };
+      }
+
+      function initStabilityPingChart() {
+        const chartContext = document.getElementById("stabilityPingChart");
+        if (!chartContext || typeof Chart === "undefined") return;
+        stabilityPingChart = new Chart(chartContext, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              { label: "Ping ms", data: [], borderColor: "#b45309", tension: 0.3, fill: false },
+            ],
+          },
+          options: { responsive: true, maintainAspectRatio: false },
+        });
+      }
+
+      function addStabilityPingPoint(pingMs) {
+        if (!stabilityPingChart) return;
+        stabilityPingChart.data.labels.push(new Date().toLocaleTimeString());
+        stabilityPingChart.data.datasets[0].data.push(pingMs);
+        if (stabilityPingChart.data.labels.length > 20) {
+          stabilityPingChart.data.labels.shift();
+          stabilityPingChart.data.datasets[0].data.shift();
+        }
+        stabilityPingChart.update();
+      }
+
+      function renderStability(data) {
+        const quality = data.quality || data.network_status || "—";
+        const colors = stabilityQualityColors(quality);
+
+        stabilityPingValueEl.textContent = `${Number(data.ping || 0).toFixed(1)} ms`;
+        stabilityJitterValueEl.textContent = `${Number(data.jitter || 0).toFixed(1)} ms`;
+        stabilityPacketLossValueEl.textContent = `${Number(data.packet_loss || 0).toFixed(1)} %`;
+        stabilityScoreValueEl.textContent = `${data.connection_quality_score ?? "—"}`;
+        stabilityStatusValueEl.textContent = quality;
+        stabilityStatusValueEl.className = `text-lg font-semibold ${colors.text}`;
+
+        stabilityQualityBadgeEl.textContent = quality;
+        stabilityQualityBadgeEl.className = `rounded-full px-3 py-1 text-xs font-semibold ${colors.badge}`;
+
+        addStabilityPingPoint(Number(data.ping || 0));
+      }
+
+      async function fetchStability() {
+        try {
+          const data = await fetchJson("/network-stability");
+          renderStability(data);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      function startStabilityMonitor() {
+        if (stabilityInterval) return;
+        fetchStability();
+        stabilityInterval = setInterval(() => {
+          fetchStability().catch((error) => console.error(error));
+        }, 1000);
+      }
+
+      function renderWebsitePingResult(result) {
+        websitePingHostEl.textContent = result.host || "—";
+        websitePingLatencyEl.textContent =
+          result.latency != null ? `${Number(result.latency).toFixed(1)} ms` : "—";
+        const online = result.reachable && result.status === "Online";
+        websitePingStatusEl.textContent = online ? "🟢 Online" : "🔴 Offline";
+        websitePingStatusEl.className = `text-sm font-semibold ${online ? "text-emerald-700" : "text-red-700"}`;
+      }
+
+      function renderWebsitePingHistory() {
+        if (!websitePingHistory.length) {
+          websitePingHistoryBodyEl.innerHTML =
+            '<tr><td colspan="3" class="px-3 py-4 text-slate-500">No tests yet.</td></tr>';
+          return;
+        }
+
+        websitePingHistoryBodyEl.innerHTML = websitePingHistory
+          .map((item) => {
+            const online = item.reachable && item.status === "Online";
+            return `
+              <tr class="border-t border-slate-100">
+                <td class="px-3 py-2 font-medium text-slate-700">${item.host}</td>
+                <td class="px-3 py-2 text-amber-700">${item.latency != null ? `${Number(item.latency).toFixed(1)} ms` : "—"}</td>
+                <td class="px-3 py-2 ${online ? "text-emerald-700" : "text-red-700"}">${online ? "🟢 Online" : "🔴 Offline"}</td>
+              </tr>`;
+          })
+          .join("");
+      }
+
+      async function runWebsitePingTest() {
+        const host = (websitePingInputEl.value || "").trim();
+        if (!host) {
+          alert("Enter a website to test.");
+          return;
+        }
+
+        websitePingBtnEl.disabled = true;
+        websitePingBtnEl.classList.add("opacity-60");
+        try {
+          const result = await fetchJson("/website-ping", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ host }),
+          });
+          renderWebsitePingResult(result);
+          websitePingHistory.unshift(result);
+          if (websitePingHistory.length > 10) websitePingHistory.pop();
+          renderWebsitePingHistory();
+        } catch (error) {
+          alert(`Website ping failed: ${error.message}`);
+        } finally {
+          websitePingBtnEl.disabled = false;
+          websitePingBtnEl.classList.remove("opacity-60");
+        }
+      }
+
+      function securityScoreColor(score) {
+        if (score <= 30) return "#dc2626";
+        if (score <= 70) return "#ca8a04";
+        return "#059669";
+      }
+
+      function renderSecurityScore(data) {
+        const score = Number(data.score || 0);
+        securityScoreValueEl.textContent = `${score}/100`;
+        securityScoreValueEl.style.color = securityScoreColor(score);
+
+        const filledDeg = Math.round((score / 100) * 360);
+        const color = securityScoreColor(score);
+        securityGaugeRingEl.style.background = `conic-gradient(${color} 0deg ${filledDeg}deg, #e2e8f0 ${filledDeg}deg 360deg)`;
+
+        securityVpnValueEl.textContent = data.vpn ? "Detected" : "Not detected";
+        securityProxyValueEl.textContent = data.proxy ? "Detected" : "Not detected";
+        securityOpenPortsValueEl.textContent =
+          Array.isArray(data.open_ports) && data.open_ports.length
+            ? data.open_ports.join(", ")
+            : "None detected";
+
+        const risk = data.risk || "—";
+        const riskColors = {
+          Low: "text-emerald-700",
+          Medium: "text-yellow-700",
+          High: "text-red-700",
+        };
+        securityRiskValueEl.textContent = risk;
+        securityRiskValueEl.className = `font-semibold ${riskColors[risk] || "text-slate-700"}`;
+      }
+
+      async function loadSecurityScore() {
+        try {
+          const data = await fetchJson("/security-score");
+          renderSecurityScore(data);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      initStabilityPingChart();
+      startStabilityMonitor();
+      loadSecurityScore();
+
+      websitePingBtnEl.addEventListener("click", () => {
+        runWebsitePingTest().catch((error) => console.error(error));
+      });
+      websitePingInputEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          runWebsitePingTest().catch((error) => console.error(error));
+        }
+      });
+
+      // NEW FEATURE END
+
+      // SHARE REPORT START
+
+      const shareReportBtn = document.getElementById("shareReportBtn");
+      const shareModalBackdrop = document.getElementById("shareModalBackdrop");
+      const closeShareModalBtn = document.getElementById("closeShareModalBtn");
+      const downloadReportImageBtn = document.getElementById("downloadReportImageBtn");
+      const copyShareLinkBtn = document.getElementById("copyShareLinkBtn");
+      const nativeShareBtn = document.getElementById("nativeShareBtn");
+      const shareModalStatus = document.getElementById("shareModalStatus");
+      const exportReportRoot = document.getElementById("exportReportRoot");
+
+      function reportText(id, fallback = "—") {
+        const el = document.getElementById(id);
+        if (!el) return fallback;
+        const text = (el.textContent || "").trim();
+        return text || fallback;
+      }
+
+      function chartSnapshot(chart) {
+        if (!chart) return "";
+        try {
+          return chart.toBase64Image("image/png", 1);
+        } catch {
+          return "";
+        }
+      }
+
+      function exportMetricCard(label, value, accent = "#2563eb") {
+        return `
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;">
+            <p style="margin:0 0 6px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;">${label}</p>
+            <p style="margin:0;font-size:20px;font-weight:700;color:${accent};line-height:1.2;">${value}</p>
+          </div>`;
+      }
+
+      function buildExportReportElement() {
+        const now = new Date();
+        const dateStr = now.toLocaleString(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        });
+        const speedImg = chartSnapshot(speedChart);
+        const stabilityImg = chartSnapshot(stabilityPingChart);
+
+        const chartsRow =
+          speedImg || stabilityImg
+            ? `
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;">
+            ${
+              speedImg
+                ? `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
+                    <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#475569;">Speed test trend</p>
+                    <img src="${speedImg}" alt="Speed chart" style="width:100%;height:auto;display:block;border-radius:8px;" />
+                  </div>`
+                : ""
+            }
+            ${
+              stabilityImg
+                ? `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
+                    <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#475569;">Stability ping history</p>
+                    <img src="${stabilityImg}" alt="Stability chart" style="width:100%;height:auto;display:block;border-radius:8px;" />
+                  </div>`
+                : ""
+            }
+          </div>`
+            : "";
+
+        const wrapper = document.createElement("div");
+        wrapper.style.cssText =
+          "font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f1f5f9;padding:28px;width:1120px;box-sizing:border-box;";
+        wrapper.innerHTML = `
+          <div style="background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 25px 50px -12px rgba(15,23,42,0.18);border:1px solid #e2e8f0;">
+            <div style="background:linear-gradient(135deg,#1d4ed8 0%,#2563eb 45%,#0ea5e9 100%);padding:28px 32px;color:#fff;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+                <div>
+                  <p style="margin:0 0 6px;font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;opacity:0.85;">Network health report</p>
+                  <h1 style="margin:0;font-size:28px;font-weight:800;line-height:1.2;">Smart Network Analyzer</h1>
+                  <p style="margin:10px 0 0;font-size:14px;opacity:0.92;">Real-time connectivity, security &amp; performance snapshot</p>
+                </div>
+                <div style="text-align:right;font-size:13px;opacity:0.95;">
+                  <p style="margin:0;font-weight:600;">Generated</p>
+                  <p style="margin:4px 0 0;">${dateStr}</p>
+                </div>
+              </div>
+            </div>
+            <div style="padding:28px 32px 32px;">
+              <p style="margin:0 0 14px;font-size:13px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:0.05em;">Speed &amp; throughput</p>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+                ${exportMetricCard("Ping", reportText("pingValue"), "#b45309")}
+                ${exportMetricCard("Download", reportText("downloadValue"), "#059669")}
+                ${exportMetricCard("Upload", reportText("uploadValue"), "#2563eb")}
+              </div>
+              <p style="margin:22px 0 14px;font-size:13px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:0.05em;">Live network &amp; stability</p>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+                ${exportMetricCard("Live download", reportText("liveDownload"), "#059669")}
+                ${exportMetricCard("Live upload", reportText("liveUpload"), "#2563eb")}
+                ${exportMetricCard("Stability", reportText("stabilityStatusValue"), "#7c3aed")}
+                ${exportMetricCard("Packet loss", reportText("stabilityPacketLossValue"), "#dc2626")}
+              </div>
+              <p style="margin:22px 0 14px;font-size:13px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:0.05em;">Identity &amp; security</p>
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+                  <p style="margin:0 0 8px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;">Connection</p>
+                  <p style="margin:0 0 4px;font-size:14px;color:#0f172a;"><strong>IP:</strong> ${reportText("ipValue")}</p>
+                  <p style="margin:0 0 4px;font-size:14px;color:#0f172a;"><strong>ISP:</strong> ${reportText("ispValue")}</p>
+                  <p style="margin:0;font-size:14px;color:#0f172a;"><strong>Location:</strong> ${reportText("locationValue")}</p>
+                </div>
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+                  <p style="margin:0 0 8px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;">Security</p>
+                  <p style="margin:0 0 4px;font-size:14px;color:#0f172a;"><strong>Score:</strong> ${reportText("securityScoreValue")}</p>
+                  <p style="margin:0 0 4px;font-size:14px;color:#0f172a;"><strong>Risk:</strong> ${reportText("securityRiskValue")}</p>
+                  <p style="margin:0;font-size:14px;color:#0f172a;"><strong>VPN / Proxy:</strong> ${reportText("securityVpnValue")} / ${reportText("securityProxyValue")}</p>
+                </div>
+              </div>
+              ${chartsRow}
+              <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+                <p style="margin:0;font-size:12px;color:#64748b;">${window.location.origin}</p>
+                <p style="margin:0;font-size:12px;font-weight:600;color:#2563eb;">Smart Network Analyzer · Professional Report</p>
+              </div>
+            </div>
+          </div>`;
+        return wrapper;
+      }
+
+      function showShareStatus(message, type = "info") {
+        const styles = {
+          info: "background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe",
+          success: "background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0",
+          error: "background:#fef2f2;color:#b91c1c;border:1px solid #fecaca",
+        };
+        shareModalStatus.className = "mb-3 rounded-md px-3 py-2 text-sm";
+        shareModalStatus.style.cssText = styles[type] || styles.info;
+        shareModalStatus.textContent = message;
+        shareModalStatus.classList.remove("hidden");
+      }
+
+      function openShareModal() {
+        shareModalBackdrop.classList.add("share-open");
+        shareModalStatus.classList.add("hidden");
+        if (navigator.share) nativeShareBtn.classList.remove("hidden");
+        if (navigator.share) nativeShareBtn.classList.add("flex");
+      }
+
+      function closeShareModal() {
+        shareModalBackdrop.classList.remove("share-open");
+      }
+
+      async function renderReportCanvas() {
+        if (typeof html2canvas === "undefined") {
+          throw new Error("Image export library failed to load. Refresh the page.");
+        }
+        exportReportRoot.innerHTML = "";
+        exportReportRoot.appendChild(buildExportReportElement());
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+        return html2canvas(exportReportRoot.firstElementChild, {
+          scale: 2,
+          backgroundColor: "#f1f5f9",
+          logging: false,
+          useCORS: true,
+        });
+      }
+
+      async function downloadReportAsImage() {
+        downloadReportImageBtn.disabled = true;
+        downloadReportImageBtn.classList.add("opacity-60");
+        showShareStatus("Generating professional report image…", "info");
+        try {
+          const canvas = await renderReportCanvas();
+          const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+          const link = document.createElement("a");
+          link.download = `network-report-${stamp}.png`;
+          link.href = canvas.toDataURL("image/png", 1.0);
+          link.click();
+          showShareStatus("Report downloaded successfully.", "success");
+        } catch (error) {
+          showShareStatus(error.message || "Could not create image.", "error");
+        } finally {
+          downloadReportImageBtn.disabled = false;
+          downloadReportImageBtn.classList.remove("opacity-60");
+          exportReportRoot.innerHTML = "";
+        }
+      }
+
+      async function copyDashboardShareLink() {
+        const url = window.location.href;
+        try {
+          await navigator.clipboard.writeText(url);
+          showShareStatus("Share link copied to clipboard.", "success");
+        } catch {
+          showShareStatus(url, "info");
+        }
+      }
+
+      async function nativeShareReport() {
+        try {
+          const canvas = await renderReportCanvas();
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 1.0));
+          exportReportRoot.innerHTML = "";
+          if (!blob) throw new Error("Could not build image.");
+
+          const file = new File([blob], "network-report.png", { type: "image/png" });
+          const shareData = {
+            title: "Smart Network Analyzer Report",
+            text: "Network health report snapshot",
+            url: window.location.href,
+            files: [file],
+          };
+
+          if (navigator.canShare && navigator.canShare(shareData)) {
+            await navigator.share(shareData);
+          } else {
+            await navigator.share({
+              title: shareData.title,
+              text: shareData.text,
+              url: shareData.url,
+            });
+          }
+          showShareStatus("Shared successfully.", "success");
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            showShareStatus(error.message || "Share not available.", "error");
+          }
+        }
+      }
+
+      if (shareReportBtn) {
+        shareReportBtn.addEventListener("click", openShareModal);
+        closeShareModalBtn.addEventListener("click", closeShareModal);
+        shareModalBackdrop.addEventListener("click", (e) => {
+          if (e.target === shareModalBackdrop) closeShareModal();
+        });
+        downloadReportImageBtn.addEventListener("click", () => {
+          downloadReportAsImage().catch((err) => console.error(err));
+        });
+        copyShareLinkBtn.addEventListener("click", () => {
+          copyDashboardShareLink().catch((err) => console.error(err));
+        });
+        nativeShareBtn.addEventListener("click", () => {
+          nativeShareReport().catch((err) => console.error(err));
+        });
+      }
+
+      // SHARE REPORT END
+
+      // ── Init ──────────────────────────────────────────────────────────────────────
+
+      initSpeedChart();
+      initProviderMap();
+      loadIpInfo();
+      fetchAndRenderNetworkStats().catch((error) => console.error(error));
+    </script>
   </body>
 </html>

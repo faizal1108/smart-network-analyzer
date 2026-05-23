@@ -78,7 +78,7 @@ docker compose up --build
 - Prometheus: [http://localhost:9090](http://localhost:9090)
 - Grafana: [http://localhost:3000](http://localhost:3000)
   - Username: `admin`
-  - Password: `admin`
+  - Password: `admin@12`
 
 To stop:
 
