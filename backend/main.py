@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 import psutil
 from fastapi import FastAPI, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from prometheus_client import Gauge
@@ -21,6 +22,20 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 
 app = FastAPI(title="Smart Network Analyzer API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://faizal1108.github.io",
+        "http://localhost:8080",
+        "http://localhost:8000",
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Prometheus custom gauges for host network counters.
 net_sent_gauge = Gauge("smart_network_bytes_sent", "Total bytes sent by host")

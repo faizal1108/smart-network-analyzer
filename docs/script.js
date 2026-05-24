@@ -1,4 +1,10 @@
-const API_BASE = "https://smart-network-analyzer-1.onrender.com/api";
+const API_BASE = "https://smart-network-analyzer-1.onrender.com";
+
+function apiUrl(path) {
+  const base = String(API_BASE).replace(/\/+$/, "");
+  const route = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${route}`;
+}
 
 const toggleMonitorBtn = document.getElementById("toggleMonitorBtn");
 const refreshNetworkBtn = document.getElementById("refreshNetworkBtn");
@@ -78,7 +84,7 @@ function formatMbitPerSec(mbitPerSec) {
 }
 
 async function fetchJson(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, options);
+  const response = await fetch(apiUrl(path), options);
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || `Request failed: ${response.status}`);
@@ -139,7 +145,7 @@ const SPEED_TEST_SIZE_MB = 10;
 
 async function runDownloadTest() {
   const start = performance.now();
-  const response = await fetch(`${API_BASE}/download-test?size_mb=${SPEED_TEST_SIZE_MB}`);
+  const response = await fetch(apiUrl(`/download-test?size_mb=${SPEED_TEST_SIZE_MB}`));
   if (!response.ok) throw new Error("Download test failed");
 
   let receivedBytes = 0;
@@ -165,7 +171,7 @@ async function runUploadTest() {
   formData.append("file", uploadBlob, "upload-test.bin");
 
   const start = performance.now();
-  const response = await fetch(`${API_BASE}/upload-test`, { method: "POST", body: formData });
+  const response = await fetch(apiUrl("/upload-test"), { method: "POST", body: formData });
   if (!response.ok) throw new Error("Upload test failed");
   await response.json();
 
