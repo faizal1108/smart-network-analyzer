@@ -142,6 +142,36 @@
         <div class="mt-4">
           <canvas id="speedChart" height="120"></canvas>
         </div>
+        <div class="mt-4 border-t border-slate-200 pt-4">
+          <div class="mb-2 flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-slate-700">Speed test history</h3>
+            <button
+              id="clearSpeedTestHistoryBtn"
+              type="button"
+              class="text-xs font-medium text-slate-500 hover:text-red-600"
+            >
+              Clear
+            </button>
+          </div>
+          <p class="mb-2 text-xs text-slate-400">Saved in your browser (localStorage)</p>
+          <div class="max-h-40 overflow-y-auto overflow-x-auto rounded-lg border border-slate-200">
+            <table class="min-w-full text-sm">
+              <thead class="sticky top-0 bg-slate-50 text-left text-slate-600">
+                <tr>
+                  <th class="px-3 py-2">When</th>
+                  <th class="px-3 py-2">Ping</th>
+                  <th class="px-3 py-2">Download</th>
+                  <th class="px-3 py-2">Upload</th>
+                </tr>
+              </thead>
+              <tbody id="speedTestHistoryBody">
+                <tr>
+                  <td colspan="4" class="px-3 py-4 text-slate-500">No speed tests saved yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <!-- Network Monitor -->
@@ -359,11 +389,22 @@
             <p id="websitePingStatus" class="text-sm font-semibold">—</p>
           </div>
         </div>
-        <h3 class="mb-2 text-sm font-semibold text-slate-700">Recent Tests</h3>
-        <div class="overflow-x-auto">
-          <table class="min-w-full border border-slate-200 text-sm">
-            <thead class="bg-slate-50 text-left text-slate-600">
+        <div class="mb-2 flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-slate-700">Recent tests</h3>
+          <button
+            id="clearWebsitePingHistoryBtn"
+            type="button"
+            class="text-xs font-medium text-slate-500 hover:text-red-600"
+          >
+            Clear
+          </button>
+        </div>
+        <p class="mb-2 text-xs text-slate-400">Saved in your browser (localStorage)</p>
+        <div class="max-h-48 overflow-y-auto overflow-x-auto rounded-lg border border-slate-200">
+          <table class="min-w-full text-sm">
+            <thead class="sticky top-0 bg-slate-50 text-left text-slate-600">
               <tr>
+                <th class="px-3 py-2">When</th>
                 <th class="px-3 py-2">Website</th>
                 <th class="px-3 py-2">Latency</th>
                 <th class="px-3 py-2">Status</th>
@@ -371,7 +412,7 @@
             </thead>
             <tbody id="websitePingHistoryBody">
               <tr>
-                <td colspan="3" class="px-3 py-4 text-slate-500">No tests yet.</td>
+                <td colspan="4" class="px-3 py-4 text-slate-500">No tests yet.</td>
               </tr>
             </tbody>
           </table>
@@ -521,6 +562,133 @@
         return response.json();
       }
 
+      // ── Browser localStorage history ─────────────────────────────────────────────
+
+      const SNA_HISTORY_KEYS = {
+        speedTest: "sna_speed_test_history",
+        websitePing: "sna_website_ping_history",
+      };
+      const SNA_HISTORY_LIMITS = { speedTest: 30, websitePing: 50 };
+
+      function escapeHistoryHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function formatHistoryWhen(iso) {
+        if (!iso) return "—";
+        try {
+          return new Date(iso).toLocaleString(undefined, {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        } catch {
+          return "—";
+        }
+      }
+
+      function loadHistoryFromStorage(key, limit) {
+        try {
+          const raw = localStorage.getItem(key);
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) return [];
+          return parsed.slice(0, limit);
+        } catch {
+          return [];
+        }
+      }
+
+      function saveHistoryToStorage(key, items, limit) {
+        try {
+          localStorage.setItem(key, JSON.stringify(items.slice(0, limit)));
+        } catch (error) {
+          console.warn("Could not save history to localStorage:", error);
+        }
+      }
+
+      function prependHistoryEntry(key, entry, limit) {
+        const items = loadHistoryFromStorage(key, limit);
+        items.unshift(entry);
+        saveHistoryToStorage(key, items, limit);
+        return items;
+      }
+
+      let speedTestHistory = loadHistoryFromStorage(
+        SNA_HISTORY_KEYS.speedTest,
+        SNA_HISTORY_LIMITS.speedTest
+      );
+      let websitePingHistory = loadHistoryFromStorage(
+        SNA_HISTORY_KEYS.websitePing,
+        SNA_HISTORY_LIMITS.websitePing
+      );
+
+      function renderSpeedTestHistory() {
+        const body = document.getElementById("speedTestHistoryBody");
+        if (!body) return;
+        if (!speedTestHistory.length) {
+          body.innerHTML =
+            '<tr><td colspan="4" class="px-3 py-4 text-slate-500">No speed tests saved yet.</td></tr>';
+          return;
+        }
+        body.innerHTML = speedTestHistory
+          .map(
+            (item) => `
+          <tr class="border-t border-slate-100">
+            <td class="px-3 py-2 text-slate-500 whitespace-nowrap">${escapeHistoryHtml(formatHistoryWhen(item.testedAt))}</td>
+            <td class="px-3 py-2 text-amber-700">${Number(item.ping || 0).toFixed(1)} ms</td>
+            <td class="px-3 py-2 text-emerald-700">${escapeHistoryHtml(formatMbitPerSec(item.download))}</td>
+            <td class="px-3 py-2 text-blue-700">${escapeHistoryHtml(formatMbitPerSec(item.upload))}</td>
+          </tr>`
+          )
+          .join("");
+      }
+
+      function saveSpeedTestToHistory({ ping, download, upload }) {
+        speedTestHistory = prependHistoryEntry(
+          SNA_HISTORY_KEYS.speedTest,
+          {
+            ping: Number(ping),
+            download: Number(download),
+            upload: Number(upload),
+            testedAt: new Date().toISOString(),
+          },
+          SNA_HISTORY_LIMITS.speedTest
+        );
+        renderSpeedTestHistory();
+      }
+
+      function clearSpeedTestHistory() {
+        speedTestHistory = [];
+        localStorage.removeItem(SNA_HISTORY_KEYS.speedTest);
+        renderSpeedTestHistory();
+      }
+
+      function saveWebsitePingToHistory(result) {
+        websitePingHistory = prependHistoryEntry(
+          SNA_HISTORY_KEYS.websitePing,
+          {
+            host: result.host,
+            reachable: result.reachable,
+            latency: result.latency,
+            status: result.status,
+            testedAt: new Date().toISOString(),
+          },
+          SNA_HISTORY_LIMITS.websitePing
+        );
+      }
+
+      function clearWebsitePingHistory() {
+        websitePingHistory = [];
+        localStorage.removeItem(SNA_HISTORY_KEYS.websitePing);
+        renderWebsitePingHistory();
+      }
+
       // ── Speed Test ───────────────────────────────────────────────────────────────
 
       function initSpeedChart() {
@@ -621,6 +789,10 @@
 
         const downloadSamples = [];
         const uploadSamples = [];
+        let lastPing = 0;
+        let lastDownload = 0;
+        let lastUpload = 0;
+        let speedTestSucceeded = false;
 
         try {
           while (performance.now() < endAt) {
@@ -636,6 +808,11 @@
             const upload =
               uploadSamples.reduce((sum, value) => sum + value, 0) / uploadSamples.length;
 
+            lastPing = ping;
+            lastDownload = download;
+            lastUpload = upload;
+            speedTestSucceeded = true;
+
             pingValueEl.textContent = `${ping.toFixed(2)} ms`;
             downloadValueEl.textContent = formatMbitPerSec(download);
             uploadValueEl.textContent = formatMbitPerSec(upload);
@@ -644,6 +821,13 @@
         } catch (error) {
           alert(`Speed test failed: ${error.message}`);
         } finally {
+          if (speedTestSucceeded) {
+            saveSpeedTestToHistory({
+              ping: lastPing,
+              download: lastDownload,
+              upload: lastUpload,
+            });
+          }
           startSpeedTestBtn.disabled = false;
           startSpeedTestBtn.classList.remove("opacity-60");
           startSpeedTestBtn.textContent = "Start Test";
@@ -1163,7 +1347,6 @@
 
       let stabilityPingChart = null;
       let stabilityInterval = null;
-      const websitePingHistory = [];
 
       function stabilityQualityColors(quality) {
         const map = {
@@ -1247,16 +1430,18 @@
       function renderWebsitePingHistory() {
         if (!websitePingHistory.length) {
           websitePingHistoryBodyEl.innerHTML =
-            '<tr><td colspan="3" class="px-3 py-4 text-slate-500">No tests yet.</td></tr>';
+            '<tr><td colspan="4" class="px-3 py-4 text-slate-500">No tests yet.</td></tr>';
           return;
         }
 
         websitePingHistoryBodyEl.innerHTML = websitePingHistory
+          .slice(0, 20)
           .map((item) => {
             const online = item.reachable && item.status === "Online";
             return `
               <tr class="border-t border-slate-100">
-                <td class="px-3 py-2 font-medium text-slate-700">${item.host}</td>
+                <td class="px-3 py-2 text-slate-500 whitespace-nowrap">${escapeHistoryHtml(formatHistoryWhen(item.testedAt))}</td>
+                <td class="px-3 py-2 font-medium text-slate-700">${escapeHistoryHtml(item.host)}</td>
                 <td class="px-3 py-2 text-amber-700">${item.latency != null ? `${Number(item.latency).toFixed(1)} ms` : "—"}</td>
                 <td class="px-3 py-2 ${online ? "text-emerald-700" : "text-red-700"}">${online ? "🟢 Online" : "🔴 Offline"}</td>
               </tr>`;
@@ -1280,8 +1465,7 @@
             body: JSON.stringify({ host }),
           });
           renderWebsitePingResult(result);
-          websitePingHistory.unshift(result);
-          if (websitePingHistory.length > 10) websitePingHistory.pop();
+          saveWebsitePingToHistory(result);
           renderWebsitePingHistory();
         } catch (error) {
           alert(`Website ping failed: ${error.message}`);
@@ -1335,6 +1519,24 @@
       initStabilityPingChart();
       startStabilityMonitor();
       loadSecurityScore();
+      renderWebsitePingHistory();
+
+      const clearSpeedTestHistoryBtn = document.getElementById("clearSpeedTestHistoryBtn");
+      const clearWebsitePingHistoryBtn = document.getElementById("clearWebsitePingHistoryBtn");
+      if (clearSpeedTestHistoryBtn) {
+        clearSpeedTestHistoryBtn.addEventListener("click", () => {
+          if (confirm("Clear all saved speed test history from this browser?")) {
+            clearSpeedTestHistory();
+          }
+        });
+      }
+      if (clearWebsitePingHistoryBtn) {
+        clearWebsitePingHistoryBtn.addEventListener("click", () => {
+          if (confirm("Clear all saved website ping history from this browser?")) {
+            clearWebsitePingHistory();
+          }
+        });
+      }
 
       websitePingBtnEl.addEventListener("click", () => {
         runWebsitePingTest().catch((error) => console.error(error));
@@ -1596,6 +1798,7 @@
 
       initSpeedChart();
       initProviderMap();
+      renderSpeedTestHistory();
       loadIpInfo();
       fetchAndRenderNetworkStats().catch((error) => console.error(error));
     </script>
