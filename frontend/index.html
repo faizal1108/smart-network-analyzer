@@ -40,7 +40,7 @@
   <body class="min-h-screen bg-slate-100 text-slate-900">
     <nav class="border-b border-slate-200 bg-white">
       <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4">
-        <h1 class="text-xl font-semibold text-blue-700">Smart Network Analyzer</h1>
+        <h1 class="text-xl font-semibold text-blue-700">Device Network Analyzer</h1>
         <div class="flex items-center gap-3">
           <span class="hidden text-sm text-slate-500 sm:inline">Real-Time Network Insights</span>
           <button
@@ -1625,7 +1625,7 @@
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
                 <div>
                   <p style="margin:0 0 6px;font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;opacity:0.85;">Network health report</p>
-                  <h1 style="margin:0;font-size:28px;font-weight:800;line-height:1.2;">Smart Network Analyzer</h1>
+                  <h1 style="margin:0;font-size:28px;font-weight:800;line-height:1.2;">Device Network Analyzer</h1>
                   <p style="margin:10px 0 0;font-size:14px;opacity:0.92;">Real-time connectivity, security &amp; performance snapshot</p>
                 </div>
                 <div style="text-align:right;font-size:13px;opacity:0.95;">
@@ -1666,7 +1666,7 @@
               ${chartsRow}
               <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
                 <p style="margin:0;font-size:12px;color:#64748b;">${window.location.origin}</p>
-                <p style="margin:0;font-size:12px;font-weight:600;color:#2563eb;">Smart Network Analyzer · Professional Report</p>
+                <p style="margin:0;font-size:12px;font-weight:600;color:#2563eb;">Device Network Analyzer · Professional Report</p>
               </div>
             </div>
           </div>`;
@@ -1752,7 +1752,7 @@
 
           const file = new File([blob], "network-report.png", { type: "image/png" });
           const shareData = {
-            title: "Smart Network Analyzer Report",
+            title: "Device Network Analyzer Report",
             text: "Network health report snapshot",
             url: window.location.href,
             files: [file],

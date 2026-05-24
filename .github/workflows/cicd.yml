@@ -1,0 +1,40 @@
+name: Smart Network Analyzer CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  docker-compose-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start Docker Compose
+        run: |
+          docker compose up -d --build
+
+      - name: Wait for services
+        run: sleep 20
+
+      - name: Check running containers
+        run: docker ps
+
+      - name: Test Backend
+        run: curl http://localhost:8000
+
+      - name: Test Frontend
+        run: curl http://localhost:8080
+
+      - name: Test Prometheus
+        run: curl http://localhost:9090
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down
