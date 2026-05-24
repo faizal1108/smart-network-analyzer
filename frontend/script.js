@@ -1,4 +1,4 @@
-const API_BASE = "/api";
+const API_BASE = "https://smart-network-analyzer-1.onrender.com/api";
 
 const toggleMonitorBtn = document.getElementById("toggleMonitorBtn");
 const refreshNetworkBtn = document.getElementById("refreshNetworkBtn");
