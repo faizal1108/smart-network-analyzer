@@ -6,34 +6,58 @@ on:
       - main
 
 jobs:
-  docker-compose-test:
+  test-and-deploy:
+
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+
+      - name: Run Pytest
+        run: |
+          cd backend
+          pytest -v
+
+
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
+
 
       - name: Start Docker Compose
         run: |
           docker compose up -d --build
 
+
       - name: Wait for services
         run: sleep 20
 
-      - name: Check running containers
-        run: docker ps
 
       - name: Test Backend
-        run: curl http://localhost:8000
+        run: curl http://localhost:8000/ping
+
 
       - name: Test Frontend
         run: curl http://localhost:8080
 
+
       - name: Test Prometheus
         run: curl http://localhost:9090
+
 
       - name: Cleanup
         if: always()
